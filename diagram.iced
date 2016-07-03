@@ -1,17 +1,10 @@
 assert = require 'assert'
 G = require 'geometry.js'
 
-# D =
-#   Point: ->
-#   Circle: ->
-#   Line: (props) ->
-#     props.
-#     return
-
 _diagram_ctx_g = null
 Construction = (name, opts) ->
   opts.primitive ?= false
-  opts.implicit_lines ?= -> []
+  opts.containments ?= -> []
   opts.canonicalize ?= (x) -> x
 
   return (args...) ->
@@ -28,7 +21,7 @@ Construction = (name, opts) ->
       name: args[0], type: name, deps: deps
       evaluator: opts.evaluator
       primitive: opts.primitive
-      implicit_lines: opts.implicit_lines
+      containments: opts.containments
     }
 
 Pt = Construction 'Pt', {
@@ -37,37 +30,32 @@ Pt = Construction 'Pt', {
   primitive: true
 }
 
-# Line = Construction 'Line', {
-#   dep_types: [G.Point, G.Point]
-#   evaluator: (args...) -> new G.Line args...
-# }
-
 Proj = Construction 'Proj', {
   dep_types: [G.Point, G.Line]
   evaluator: G.project_PL
-  implicit_lines: -> [[@name, @deps[1]]]
+  containments: -> [[@name, @deps[1]]]
 }
 
 Midpt = Construction 'Midpt', {
   dep_types: [G.Point, G.Point]
   canonicalize: (deps) -> deps.slice().sort()
   evaluator: G.midpt
-  implicit_lines: -> [[@name, @deps[0] + '.' + @deps[1]]]
+  containments: -> [[@name, @deps[0] + '.' + @deps[1]]]
 }
 
 Intersect = Construction 'Intersect', {
   dep_types: [G.Line, G.Line]
   canonicalize: (deps) -> deps.slice().sort()
   evaluator: G.intersect_LL
-  implicit_lines: -> [[@name, @deps[0]], [@name, @deps[1]]]
+  containments: -> [[@name, @deps[0]], [@name, @deps[1]]]
 }
 
 Circumcircle = Construction 'Circumcircle', {
-  spec: (p1, p2, p3) ->
-    return D.Circle {contains: [p1, p2, p3]}
+  type: G.Circle
   dep_types: [G.Point, G.Point, G.Point]
   canonicalize: (deps) -> deps.slice().sort()
   evaluator: G.circumcircle
+  containments: -> ([d, @name] for d in @deps)
 }
 
 IntersectPCC = Construction 'IntersectPCC', {
@@ -125,15 +113,25 @@ class Diagram
       if is_line(dep)
         @ensure_line dep
 
-    for [pt_name, line_name] in item.implicit_lines()
-      line = @ensure_line line_name
-      if pt_name in line.contains
-        continue
-      for pt2 in line.contains
-        c = canonicalize(pt_name + '.' + pt2)
-        assert not @_implicit_lines[c]?, "Duplicate implicit line #{c}!"
-        @_implicit_lines[c] = line
-      line.contains.push pt_name
+    for [pt_name, parent_name] in item.containments()
+      if is_line(parent_name)
+        line = @ensure_line parent_name
+        if pt_name in line.contains
+          continue
+        for pt2 in line.contains
+          c = canonicalize(pt_name + '.' + pt2)
+          if @_implicit_lines[c]?
+            # console.log 'bad line', line
+            # console.log 'alt', @_implicit_lines[c]
+            # TODO: right now this can happen if we define the same
+            # intersection twice (using different names for the same
+            # lines)
+            console.warn "Duplicate implicit line #{c}!"
+          @_implicit_lines[c] = line
+        line.contains.push pt_name
+
+      else
+        throw new Error "Can't handle non-line containments yet"
 
     @_eval_order.push item.name
 
