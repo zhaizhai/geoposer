@@ -1,6 +1,13 @@
 assert = require 'assert'
 G = require 'geometry.js'
 
+# D =
+#   Point: ->
+#   Circle: ->
+#   Line: (props) ->
+#     props.
+#     return
+
 _diagram_ctx_g = null
 Construction = (name, opts) ->
   opts.primitive ?= false
@@ -56,6 +63,8 @@ Intersect = Construction 'Intersect', {
 }
 
 Circumcircle = Construction 'Circumcircle', {
+  spec: (p1, p2, p3) ->
+    return D.Circle {contains: [p1, p2, p3]}
   dep_types: [G.Point, G.Point, G.Point]
   canonicalize: (deps) -> deps.slice().sort()
   evaluator: G.circumcircle
@@ -88,19 +97,16 @@ class Diagram
         ret.push v.name
     return ret
 
-  # TODO: we should just make lines an entirely different kind of
-  # object without deps
+  # TODO: reconsider ensure_line vs. get
   ensure_line: (name) ->
     if not is_line(name)
       throw new Error "Invalid Line name #{name}"
     name = canonicalize name
     if not @_implicit_lines[name]?
       [start, end] = name.split('.')
-      @_implicit_lines[name] = # TODO: temporary hack
-        name: name, type: 'Line', deps: [start, end]
-        evaluator: (args...) -> new G.Line args...
-        primitive: false
-        contains: []
+      @_implicit_lines[name] =
+        name: name, type: 'Line'
+        contains: [start, end]
     return @_implicit_lines[name]
 
   get: (name) ->
@@ -123,10 +129,9 @@ class Diagram
       line = @ensure_line line_name
       if pt_name in line.contains
         continue
-      [ls, le] = line_name.split('.')
-      for pt2 in [ls, le].concat(line.contains)
+      for pt2 in line.contains
         c = canonicalize(pt_name + '.' + pt2)
-        # TODO: make sure not to overwrite?
+        assert not @_implicit_lines[c]?, "Duplicate implicit line #{c}!"
         @_implicit_lines[c] = line
       line.contains.push pt_name
 
@@ -143,20 +148,33 @@ class Diagram
 
     extras = [] # for display only
     values = {}
+    lines_used = []
+
+    eval_line = (line_name) =>
+      [s, e] = line_name.split('.')
+      return G.Line values[s], values[e]
+
     for name in @_eval_order
+      if is_line(name)
+        assert false, "Don't support non-implicit lines right now"
+        continue
+
       item = @get name
       if item.primitive
+        assert prims[name]?, "Unspecified value for #{name}"
         values[name] = item.evaluator prims[name]...
         continue
 
       dep_vals = []
       for d in item.deps
         # TODO: handle duplicate lines
-        if not values[d]?
+        if values[d]?
+          dep_vals.push values[d]
+        else
           assert is_line(d)
-          [s, e] = @get(d).deps
-          values[d] = G.Line values[s], values[e]
-        dep_vals.push values[d]
+          l = @get(d)
+          if l not in lines_used then lines_used.push l
+          dep_vals.push eval_line(d)
       values[name] = item.evaluator dep_vals...
 
       if item.type is 'Midpt'
@@ -170,16 +188,12 @@ class Diagram
         # TODO: dedup with lines
         extras.push (G.Line values[item.deps[0]], values[name])
 
-    # fix lines to cover all contained points
-    for k, v of values
-      if not is_line(k) then continue
-      [s, e] = (values[p] for p in @get(k).deps)
-      pts = (values[p] for p in @get(k).contains).concat([s, e])
-      v = e.minus(s)
-
+    for l in lines_used
+      pts = (values[p] for p in l.contains)
+      v = pts[1].minus(pts[0]) # TODO: make sure v isn't 0
       s = pts.reduce((a, b) -> if a.dot(v) < b.dot(v) then a else b)
       e = pts.reduce((a, b) -> if a.dot(v) > b.dot(v) then a else b)
-      values[k] = G.Line s, e
+      values[l.name] = G.Line s, e
 
     return {objs: values, extras: extras}
 
