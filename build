@@ -1,0 +1,3 @@
+#!/bin/bash
+
+coffee scripts/build.coffee display.iced > compiled_js/main.js
