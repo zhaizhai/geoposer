@@ -1,7 +1,8 @@
 SVG = require 'lib/svg.coffee'
 Path = require 'paths-js/path'
 {
-  Diagram, Pt, Proj, Midpt, Intersect
+  Diagram, Pt, Proj, Midpt, Intersect,
+  Circumcircle, IntersectPLC
 } = require 'diagram.iced'
 G = require 'geometry.js'
 
@@ -87,17 +88,20 @@ generate_problem = ->
 
 
 window.onload = ->
-  # D = new Diagram
-  # D.define ->
+  root = SVG.root 500, 500
+  $('body').append $(root)
+
+  # diagram = new Diagram
+  # diagram.define ->
   #   Pt 'A'; Pt 'B'; Pt 'C'
   #   Proj 'E', 'B', 'A.C'
   #   Proj 'F', 'C', 'A.B'
-  #   Midpt 'X', 'A', 'B'
-  #   Midpt 'Y', 'A', 'C'
-  #   Intersect 'Z', 'E.X', 'F.Y'
-
-  root = SVG.root 500, 500
-  $('body').append $(root)
+  #   Midpt 'M', 'B', 'C'
+  #   Circumcircle 'w', 'E', 'F', 'M'
+  #   IntersectPLC 'Z', 'M', 'M.B', 'w'
+  # render_diagram root, diagram, {
+  #   A: [80, 120], B: [0, 0], C: [200, 0]
+  # }
 
   diagram = generate_problem()
   render_symmetries root, diagram

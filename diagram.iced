@@ -6,6 +6,8 @@ Construction = (name, opts) ->
   opts.primitive ?= false
   opts.containments ?= -> []
   opts.canonicalize ?= (x) -> x
+  for k in ['type', 'evaluator', 'dep_types']
+    assert opts[k]?
 
   return (args...) ->
     if args.length isnt opts.dep_types.length + 1
@@ -18,25 +20,29 @@ Construction = (name, opts) ->
 
     deps = opts.canonicalize args[1...]
     _diagram_ctx_g.add {
-      name: args[0], type: name, deps: deps
+      name: args[0], type: opts.type, deps: deps
+      construction_type: name,
       evaluator: opts.evaluator
       primitive: opts.primitive
       containments: opts.containments
     }
 
 Pt = Construction 'Pt', {
+  type: G.Point
   dep_types: []
   evaluator: (args...) -> new G.Point args...
   primitive: true
 }
 
 Proj = Construction 'Proj', {
+  type: G.Point
   dep_types: [G.Point, G.Line]
   evaluator: G.project_PL
   containments: -> [[@name, @deps[1]]]
 }
 
 Midpt = Construction 'Midpt', {
+  type: G.Point
   dep_types: [G.Point, G.Point]
   canonicalize: (deps) -> deps.slice().sort()
   evaluator: G.midpt
@@ -44,6 +50,7 @@ Midpt = Construction 'Midpt', {
 }
 
 Intersect = Construction 'Intersect', {
+  type: G.Point
   dep_types: [G.Line, G.Line]
   canonicalize: (deps) -> deps.slice().sort()
   evaluator: G.intersect_LL
@@ -58,11 +65,18 @@ Circumcircle = Construction 'Circumcircle', {
   containments: -> ([d, @name] for d in @deps)
 }
 
-IntersectPCC = Construction 'IntersectPCC', {
-  dep_types: [G.Point, G.Circle, G.Circle]
-  canonicalize: (deps) -> [deps[0]].concat(deps.slice(1, 3).sort())
-  evaluator: G.intersect_PCC
+IntersectPLC = Construction 'IntersectPLC', {
+  type: G.Point
+  dep_types: [G.Point, G.Line, G.Circle]
+  evaluator: G.intersect_PLC
+  containments: -> [[@name, @deps[1]], [@name, @deps[2]]]
 }
+
+# IntersectPCC = Construction 'IntersectPCC', {
+#   dep_types: [G.Point, G.Circle, G.Circle]
+#   canonicalize: (deps) -> [deps[0]].concat(deps.slice(1, 3).sort())
+#   evaluator: G.intersect_PCC
+# }
 
 
 class Diagram
@@ -81,7 +95,7 @@ class Diagram
   list_points: ->
     ret = []
     for k, v of @_items
-      if v.primitive or v.type in ['Intersect', 'Proj', 'Midpt']
+      if v.type is G.Point
         ret.push v.name
     return ret
 
@@ -93,7 +107,8 @@ class Diagram
     if not @_implicit_lines[name]?
       [start, end] = name.split('.')
       @_implicit_lines[name] =
-        name: name, type: 'Line'
+        name: name, type: G.Line
+        construction_type: 'Implicit' # TODO
         contains: [start, end]
     return @_implicit_lines[name]
 
@@ -107,6 +122,9 @@ class Diagram
     if @get(item.name)?
       # TODO: make exception for implicit lines?
       throw new Error "Name conflict #{item.name}"
+
+    if item.type is G.Circle
+      item.contains = []
     @_items[item.name] = item
 
     for dep in item.deps
@@ -131,7 +149,10 @@ class Diagram
         line.contains.push pt_name
 
       else
-        throw new Error "Can't handle non-line containments yet"
+        parent = @get parent_name
+        assert parent.type is G.Circle
+        if pt_name not in parent.contains
+          parent.contains.push pt_name
 
     @_eval_order.push item.name
 
@@ -175,17 +196,18 @@ class Diagram
           dep_vals.push eval_line(d)
       values[name] = item.evaluator dep_vals...
 
-      if item.type is 'Midpt'
+      if item.construction_type is 'Midpt'
         # draw the segment for midpoints
         # TODO: dedup with lines
         [s, e] = (values[p] for p in item.deps)
         extras.push (G.Line s, e)
 
-      if item.type is 'Proj'
+      if item.construction_type is 'Proj'
         # draw the altitude for projections
         # TODO: dedup with lines
         extras.push (G.Line values[item.deps[0]], values[name])
 
+    # fix lines to reach all points that lie on them
     for l in lines_used
       pts = (values[p] for p in l.contains)
       v = pts[1].minus(pts[0]) # TODO: make sure v isn't 0
@@ -197,6 +219,9 @@ class Diagram
 
 
 exports.Diagram = Diagram
-for k, v of {Pt, Intersect, Proj, Midpt}
+for k, v of {
+  Pt, Intersect, Proj, Midpt,
+  Circumcircle, IntersectPLC
+}
   exports[k] = v
 

@@ -6,6 +6,10 @@ class Point {
     this.x = x; this.y = y;
   }
 
+  equals(o) {
+    return this.dist(o) < DIST_EPSILON;
+  }
+
   scale(r) {
     return new Point(this.x * r, this.y * r)
   }
@@ -92,12 +96,14 @@ const intersect_PCC = (p, c1, c2) => { // TODO: handle corner cases
   return p.plus(mid.minus(p).scale(2));
 };
 
-// intersection of two circles (throws if they don't intersect)
-const intersect_CC = (c1, c2) => {
-  // TODO
+// second intersection of a line with a circle
+const intersect_PLC = (p, l, c) => {
+  const halfway = project_PL(c.c, l);
+  return p.plus(halfway.minus(p).scale(2));
 };
 
-const intersect_LC = (l, c) => {
+// intersection of two circles (throws if they don't intersect)
+const intersect_CC = (c1, c2) => {
   // TODO
 };
 
@@ -132,6 +138,7 @@ exports.intersect_LL = intersect_LL;
 exports.midpt = midpt;
 exports.circumcircle = circumcircle;
 exports.intersect_PCC = intersect_PCC;
+exports.intersect_PLC = intersect_PLC;
 
 exports.are_collinear = are_collinear;
 exports.are_concurrent = are_concurrent;
