@@ -57,6 +57,14 @@ Intersect = Construction 'Intersect', {
   containments: -> [[@name, @deps[0]], [@name, @deps[1]]]
 }
 
+AngleBisector = Construction 'AngleBisector', {
+  type: G.Line
+  dep_types: [G.Point, G.Point, G.Point]
+  # canonicalize: (deps) ->
+  evaluator: G.angle_bisector
+  containments: -> [[@deps[1], @name]]
+}
+-
 Circumcircle = Construction 'Circumcircle', {
   type: G.Circle
   dep_types: [G.Point, G.Point, G.Point]
@@ -80,7 +88,7 @@ IntersectPLC = Construction 'IntersectPLC', {
 
 
 class Diagram
-  is_line = (name) -> '.' in name
+  is_anon_line = (name) -> '.' in name
   canonicalize = (line_name) ->
     [s, e] = line_name.split('.')
     if s < e
@@ -89,7 +97,6 @@ class Diagram
 
   constructor: ->
     @_items = {}
-    @_implicit_lines = {}
     @_eval_order = []
 
   list_points: ->
@@ -99,64 +106,62 @@ class Diagram
         ret.push v.name
     return ret
 
-  # TODO: reconsider ensure_line vs. get
-  ensure_line: (name) ->
-    if not is_line(name)
-      throw new Error "Invalid Line name #{name}"
+  # creates implicit line if missing
+  ensure: (name) ->
+    if not is_anon_line(name)
+      return @get name
     name = canonicalize name
-    if not @_implicit_lines[name]?
+    if not @_items[name]?
       [start, end] = name.split('.')
-      @_implicit_lines[name] =
+      @_items[name] =
         name: name, type: G.Line
-        construction_type: 'Implicit' # TODO
+        construction_type: 'Implicit'
         contains: [start, end]
-    return @_implicit_lines[name]
+    return @_items[name]
 
   get: (name) ->
-    if @_items[name]?
-      return @_items[name]
-    cname = canonicalize name
-    return @_implicit_lines[cname] ? null
+    if is_anon_line(name)
+      name = canonicalize name
+    return @_items[name] ? null
 
   add: (item) ->
     if @get(item.name)?
       # TODO: make exception for implicit lines?
       throw new Error "Name conflict #{item.name}"
 
-    if item.type is G.Circle
+    if item.type in [G.Circle, G.Line]
       item.contains = []
     @_items[item.name] = item
 
     for dep in item.deps
-      if is_line(dep)
-        @ensure_line dep
+      @ensure dep
 
     for [pt_name, parent_name] in item.containments()
-      if is_line(parent_name)
-        line = @ensure_line parent_name
-        if pt_name in line.contains
+      parent = @ensure parent_name
+
+      if parent.type is G.Line
+        if pt_name in parent.contains
           continue
-        for pt2 in line.contains
+        for pt2 in parent.contains
           c = canonicalize(pt_name + '.' + pt2)
-          if @_implicit_lines[c]?
+          if @_items[c]?
             # console.log 'bad line', line
-            # console.log 'alt', @_implicit_lines[c]
+            # console.log 'alt', @_items[c]
             # TODO: right now this can happen if we define the same
             # intersection twice (using different names for the same
             # lines)
             console.warn "Duplicate implicit line #{c}!"
-          @_implicit_lines[c] = line
-        line.contains.push pt_name
+          @_items[c] = parent
+        parent.contains.push pt_name
 
       else
-        parent = @get parent_name
         assert parent.type is G.Circle
         if pt_name not in parent.contains
           parent.contains.push pt_name
 
     @_eval_order.push item.name
 
-  define: (fn) -> # TODO: should only call once?
+  define: (fn) ->
     assert not _diagram_ctx_g?
     _diagram_ctx_g = @
     fn()
@@ -174,8 +179,8 @@ class Diagram
       return G.Line values[s], values[e]
 
     for name in @_eval_order
-      if is_line(name)
-        assert false, "Don't support non-implicit lines right now"
+      if is_anon_line(name)
+        assert false, "Implicit lines should not be directly evaluated!<"
         continue
 
       item = @get name
@@ -190,7 +195,7 @@ class Diagram
         if values[d]?
           dep_vals.push values[d]
         else
-          assert is_line(d)
+          assert is_anon_line(d)
           l = @get(d)
           if l not in lines_used then lines_used.push l
           dep_vals.push eval_line(d)
@@ -221,6 +226,7 @@ class Diagram
 exports.Diagram = Diagram
 for k, v of {
   Pt, Intersect, Proj, Midpt,
+  AngleBisector,
   Circumcircle, IntersectPLC
 }
   exports[k] = v

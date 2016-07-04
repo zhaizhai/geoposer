@@ -8,8 +8,8 @@ G = require 'geometry.js'
 
 class IntersectGen
   @is_candidate = (d, l1, l2) ->
-    line1 = d.ensure_line(l1)
-    line2 = d.ensure_line(l2)
+    line1 = d.ensure(l1)
+    line2 = d.ensure(l2)
 
     for pt in d.list_points()
       # intersection exists

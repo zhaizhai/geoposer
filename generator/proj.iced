@@ -7,7 +7,7 @@ G = require 'geometry.js'
 
 class ProjGen
   @is_candidate = (d, p, l) ->
-    line = d.ensure_line(l)
+    line = d.ensure(l)
     if p in line.contains.concat(line.deps)
       return false
 

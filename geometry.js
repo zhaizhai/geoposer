@@ -90,6 +90,14 @@ const intersect_LL = (l1, l2) => { // TODO: handle corner cases
   return ret.scale(1/(r1 + r2));
 };
 
+const angle_bisector = (p1, p2, p3) => {
+  const u = p1.minus(p2), v = p3.minus(p2);
+  const a = u.length(), b = v.length();
+  const w = u.scale(b).plus(v.scale(a));
+  const z = p2.plus(w.scale(1 / (a + b)));
+  return new Line(p2, z);
+};
+
 // second intersection of two circles with a point in common
 const intersect_PCC = (p, c1, c2) => { // TODO: handle corner cases
   const mid = project_PL(p, new Line(c1.c, c2.c));
@@ -136,6 +144,8 @@ exports.Circle = Circle;
 exports.project_PL = project_PL;
 exports.intersect_LL = intersect_LL;
 exports.midpt = midpt;
+exports.angle_bisector = angle_bisector;
+
 exports.circumcircle = circumcircle;
 exports.intersect_PCC = intersect_PCC;
 exports.intersect_PLC = intersect_PLC;
